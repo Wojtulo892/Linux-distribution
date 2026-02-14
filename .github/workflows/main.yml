@@ -1,17 +1,18 @@
-name: Budowa Wojtulo-OS v2.6
+name: Budowa Wojtulo-OS v2.7
 on: [push]
 
 jobs:
   build-iso:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. Instalacja narzedzi
+      - name: 1. Narzedzia
         run: |
           sudo apt update
           sudo apt install -y build-essential debootstrap squashfs-tools xorriso grub-pc-bin mtools bc wget xz-utils libelf-dev libssl-dev flex bison gawk libncurses-dev
 
-      - name: 2. Pobranie i Kompilacja Kernela
+      - name: 2. Budowa wszystkiego (Kernel + Rootfs)
         run: |
+          # Kernel
           wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.19.tar.xz
           tar -xf linux-6.19.tar.xz
           cd linux-6.19
@@ -22,37 +23,33 @@ jobs:
           make olddefconfig
           make -j$(nproc) bzImage
           cd ..
-          # Kopiujemy gotowe "serce" do bezpiecznego miejsca
-          mkdir -p output_files
-          cp linux-6.19/arch/x86/boot/bzImage output_files/vmlinuz
-
-      - name: 3. Budowa Systemu Plikow (Rootfs)
-        run: |
-          sudo debootstrap --variant=minbase --include=wine,openbox,xterm,pcmanfm bookworm ./rootfs http://deb.debian.org/debian/
-          mkdir -p output_files
-          sudo mksquashfs rootfs output_files/rootfs.squashfs -comp xz
-
-      - name: 4. Skladanie obrazu ISO
-        run: |
-          mkdir -p iso_root/boot/grub
-          cp output_files/vmlinuz iso_root/boot/vmlinuz
-          cp output_files/rootfs.squashfs iso_root/boot/rootfs.squashfs
           
-          # Tworzenie menu startowego
+          # Przygotowanie struktury
+          mkdir -p iso_root/boot/grub
+          cp linux-6.19/arch/x86/boot/bzImage iso_root/boot/vmlinuz
+          
+          # System plikow
+          sudo debootstrap --variant=minbase --include=wine,openbox,xterm,pcmanfm bookworm ./rootfs http://deb.debian.org/debian/
+          sudo mksquashfs rootfs iso_root/boot/rootfs.squashfs -comp xz
+          
+          # Menu
           cat <<EOF > iso_root/boot/grub/grub.cfg
           set default=0
           set timeout=1
           menuentry "Wojtulo-OS" {
-              linux /boot/vmlinuz boot=live quiet
+              linux /boot/vmlinuz boot=live
               initrd /boot/rootfs.squashfs
           }
           EOF
           
-          # Finalny krok - robienie ISO
-          grub-mkrescue -o wojtulo_os.iso iso_root
+          # Robienie ISO w glownym folderze
+          grub-mkrescue -o gotowy_system.iso iso_root
 
-      - name: 5. Udostepnienie pliku
+      - name: 3. Sprawdzanie gdzie jest plik (Debug)
+        run: ls -lh *.iso
+
+      - name: 4. Udostepnienie (Sposob bezposredni)
         uses: actions/upload-artifact@v4
         with:
-          name: Wojtulo-OS-Final-ISO
-          path: wojtulo_os.iso
+          name: MOJ-PLIK-ISO
+          path: gotowy_system.iso
