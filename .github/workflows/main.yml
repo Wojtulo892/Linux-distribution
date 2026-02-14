@@ -1,0 +1,48 @@
+name: Budowa Wojtulo-OS
+on: [push]
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Instalacja kompletu narzedzi (Naprawa bledu 2)
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential debootstrap squashfs-tools xorriso grub-pc-bin mtools bc wget xz-utils libelf-dev libssl-dev flex bison gawk libncurses-dev libudev-dev libpci-dev libiberty-dev autoconf llvm fontconfig ntfs-3g zstd
+
+      - name: 2. Pobranie i szybka konfiguracja Kernela
+        run: |
+          wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.19.tar.xz
+          tar -xf linux-6.19.tar.xz
+          cd linux-6.19
+          make defconfig
+          # Kluczowe dla Twoich plikow .exe
+          scripts/config --enable CONFIG_BINFMT_MISC
+          scripts/config --enable CONFIG_NTFS3_FS
+          # Wylaczamy zbedne rzeczy, ktore czesto sypia bledami przy kompilacji
+          scripts/config --disable CONFIG_DEBUG_INFO
+          scripts/config --disable CONFIG_DEBUG_INFO_BTF
+          make olddefconfig
+          make -j$(nproc) bzImage
+          cp arch/x86/boot/bzImage ../vmlinuz
+
+      - name: 3. Budowa systemu plikow (Rootfs)
+        run: |
+          # Budujemy baze pod .exe
+          sudo debootstrap --variant=minbase --include=wine,openbox,xterm,pcmanfm,xserver-xorg bookworm ./rootfs http://deb.debian.org/debian/
+
+      - name: 4. Tworzenie ISO
+        run: |
+          mkdir -p iso/boot/grub
+          cp vmlinuz iso/boot/vmlinuz
+          sudo mksquashfs rootfs iso/boot/rootfs.squashfs -comp xz
+          echo 'set default=0' > iso/boot/grub/grub.cfg
+          echo 'set timeout=5' >> iso/boot/grub/grub.cfg
+          echo 'menuentry "Wojtulo-OS" { linux /boot/vmlinuz boot=live; initrd /boot/rootfs.squashfs }' > iso/boot/grub/grub.cfg
+          grub-mkrescue -o wojtulo_os.iso iso
+
+      - name: 5. Finalizacja i udostepnienie
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wojtulo-OS-Gotowe-ISO
+          path: wojtulo_os.iso
