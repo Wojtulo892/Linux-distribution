@@ -1,48 +1,58 @@
-name: Budowa Wojtulo-OS
+name: Budowa Wojtulo-OS v2.6
 on: [push]
 
 jobs:
   build-iso:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. Instalacja kompletu narzedzi (Naprawa bledu 2)
+      - name: 1. Instalacja narzedzi
         run: |
           sudo apt update
-          sudo apt install -y build-essential debootstrap squashfs-tools xorriso grub-pc-bin mtools bc wget xz-utils libelf-dev libssl-dev flex bison gawk libncurses-dev libudev-dev libpci-dev libiberty-dev autoconf llvm fontconfig ntfs-3g zstd
+          sudo apt install -y build-essential debootstrap squashfs-tools xorriso grub-pc-bin mtools bc wget xz-utils libelf-dev libssl-dev flex bison gawk libncurses-dev
 
-      - name: 2. Pobranie i szybka konfiguracja Kernela
+      - name: 2. Pobranie i Kompilacja Kernela
         run: |
           wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.19.tar.xz
           tar -xf linux-6.19.tar.xz
           cd linux-6.19
           make defconfig
-          # Kluczowe dla Twoich plikow .exe
           scripts/config --enable CONFIG_BINFMT_MISC
           scripts/config --enable CONFIG_NTFS3_FS
-          # Wylaczamy zbedne rzeczy, ktore czesto sypia bledami przy kompilacji
-          scripts/config --disable CONFIG_DEBUG_INFO
           scripts/config --disable CONFIG_DEBUG_INFO_BTF
           make olddefconfig
           make -j$(nproc) bzImage
-          cp arch/x86/boot/bzImage ../vmlinuz
+          cd ..
+          # Kopiujemy gotowe "serce" do bezpiecznego miejsca
+          mkdir -p output_files
+          cp linux-6.19/arch/x86/boot/bzImage output_files/vmlinuz
 
-      - name: 3. Budowa systemu plikow (Rootfs)
+      - name: 3. Budowa Systemu Plikow (Rootfs)
         run: |
-          # Budujemy baze pod .exe
-          sudo debootstrap --variant=minbase --include=wine,openbox,xterm,pcmanfm,xserver-xorg bookworm ./rootfs http://deb.debian.org/debian/
+          sudo debootstrap --variant=minbase --include=wine,openbox,xterm,pcmanfm bookworm ./rootfs http://deb.debian.org/debian/
+          mkdir -p output_files
+          sudo mksquashfs rootfs output_files/rootfs.squashfs -comp xz
 
-      - name: 4. Tworzenie ISO
+      - name: 4. Skladanie obrazu ISO
         run: |
-          mkdir -p iso/boot/grub
-          cp vmlinuz iso/boot/vmlinuz
-          sudo mksquashfs rootfs iso/boot/rootfs.squashfs -comp xz
-          echo 'set default=0' > iso/boot/grub/grub.cfg
-          echo 'set timeout=5' >> iso/boot/grub/grub.cfg
-          echo 'menuentry "Wojtulo-OS" { linux /boot/vmlinuz boot=live; initrd /boot/rootfs.squashfs }' > iso/boot/grub/grub.cfg
-          grub-mkrescue -o wojtulo_os.iso iso
-- name: 5. Finalizacja i udostepnienie
+          mkdir -p iso_root/boot/grub
+          cp output_files/vmlinuz iso_root/boot/vmlinuz
+          cp output_files/rootfs.squashfs iso_root/boot/rootfs.squashfs
+          
+          # Tworzenie menu startowego
+          cat <<EOF > iso_root/boot/grub/grub.cfg
+          set default=0
+          set timeout=1
+          menuentry "Wojtulo-OS" {
+              linux /boot/vmlinuz boot=live quiet
+              initrd /boot/rootfs.squashfs
+          }
+          EOF
+          
+          # Finalny krok - robienie ISO
+          grub-mkrescue -o wojtulo_os.iso iso_root
+
+      - name: 5. Udostepnienie pliku
         uses: actions/upload-artifact@v4
         with:
-          name: Wojtulo-OS-Paczka
-          path: ./*.iso
-      
+          name: Wojtulo-OS-Final-ISO
+          path: wojtulo_os.iso
