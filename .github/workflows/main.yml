@@ -40,9 +40,9 @@ jobs:
           echo 'set timeout=5' >> iso/boot/grub/grub.cfg
           echo 'menuentry "Wojtulo-OS" { linux /boot/vmlinuz boot=live; initrd /boot/rootfs.squashfs }' > iso/boot/grub/grub.cfg
           grub-mkrescue -o wojtulo_os.iso iso
-
-      - name: 5. Finalizacja i udostepnienie
+- name: 5. Finalizacja i udostepnienie
         uses: actions/upload-artifact@v4
         with:
-          name: Wojtulo-OS-Gotowe-ISO
-          path: wojtulo_os.iso
+          name: Wojtulo-OS-Paczka
+          path: ./*.iso
+      
